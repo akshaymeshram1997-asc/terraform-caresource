@@ -1,8 +1,17 @@
+############################
+# Read Existing Resource Group
+############################
+data "azurerm_resource_group" "existing" {
+  name = var.resource_group_name
+}
+
+############################
 # Storage Account
+############################
 resource "azurerm_storage_account" "this" {
   name                     = var.storage_account_name
-  resource_group_name      = var.resource_group_name
-  location                 = var.location
+  resource_group_name      = data.azurerm_resource_group.existing.name
+  location                 = data.azurerm_resource_group.existing.location
   account_tier             = var.account_tier
   account_replication_type = var.account_replication_type
 
@@ -18,11 +27,13 @@ resource "azurerm_storage_account" "this" {
   tags = var.tags
 }
 
+############################
 # Private Endpoint
+############################
 resource "azurerm_private_endpoint" "this" {
   name                = "${var.storage_account_name}-pe"
-  location            = var.location
-  resource_group_name = var.resource_group_name
+  location            = data.azurerm_resource_group.existing.location
+  resource_group_name = data.azurerm_resource_group.existing.name
   subnet_id           = var.vnet_subnet_id
 
   private_service_connection {
@@ -35,23 +46,29 @@ resource "azurerm_private_endpoint" "this" {
   tags = var.tags
 }
 
-# Private DNS Zone for Storage Account Blob
+############################
+# Private DNS Zone
+############################
 resource "azurerm_private_dns_zone" "blob_zone" {
   name                = "privatelink.blob.core.windows.net"
-  resource_group_name = var.resource_group_name
+  resource_group_name = data.azurerm_resource_group.existing.name
   tags                = var.tags
 }
 
-# Link Private DNS Zone to VNet
+############################
+# DNS Zone VNet Link
+############################
 resource "azurerm_private_dns_zone_virtual_network_link" "pe_link" {
   name                  = "${var.storage_account_name}-dnslink"
-  resource_group_name   = var.resource_group_name
+  resource_group_name   = data.azurerm_resource_group.existing.name
   private_dns_zone_name = azurerm_private_dns_zone.blob_zone.name
   virtual_network_id    = var.vnet_id
   registration_enabled  = false
 }
 
-# Associate Private Endpoint with DNS Zone
+############################
+# Private Endpoint DNS Group
+############################
 resource "azurerm_private_endpoint_dns_zone_group" "pe_dns" {
   name                = "${var.storage_account_name}-dnsgroup"
   private_endpoint_id = azurerm_private_endpoint.this.id
@@ -62,7 +79,9 @@ resource "azurerm_private_endpoint_dns_zone_group" "pe_dns" {
   }
 }
 
-
+############################
+# Blob Container (ado)
+############################
 resource "azurerm_storage_container" "this" {
   name                  = var.blob_container_name
   storage_account_name  = azurerm_storage_account.this.name
